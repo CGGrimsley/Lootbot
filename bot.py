@@ -1,26 +1,26 @@
 """Discord bot for inventory detection using YOLO and PaddleOCR."""
 
+import asyncio
+import json
 import logging
 import os
 import re
 import shutil
 import sys
-import asyncio
+import tempfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-import aiofiles
-import tempfile
-import numpy as np
-import cv2
-import json
 
+import aiofiles
+import cv2
 import discord
+import numpy as np
 import torch
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
+from paddleocr import PaddleOCR
 from PIL import Image, ImageEnhance, ImageOps
 from ultralytics import YOLO
-from paddleocr import PaddleOCR
 
 # Configure logging
 logging.basicConfig(
@@ -47,26 +47,26 @@ ADMIN_USERNAME = "admin_user_name"
 
 # Item classification config
 ITEM_CATEGORIES = {
-    'Sulfur_stack': 'Sulfur',
-    'gunpowder': 'Gunpowder',
-    'explosives': 'Explosives',
-    'cooked_sulfur': 'Cooked Sulfur',
-    'pipes': 'Pipes',
-    'AK47': 'AK47',
-    'Metal_ore': 'Metal Ore',
-    'Diesel': 'Diesel',
-    'High_quality_metal': 'High-Quality Metal',
-    'Crude_oil': 'Crude Oil',
-    'Cloth': 'Cloth',
-    'Scrap': 'Scrap',
-    'HQM_ore': 'HQM Ore',
-    'Rocket': 'Rocket',
-    'c4': 'C4',
-    'charcoal': 'Charcoal',
-    'MLRS': 'MLRS',
-    'MLRS_module': 'MLRS Module',
-    'Metal_fragments': 'Metal Fragments',
-    'Low_grade_fuel': 'Low Grade Fuel'
+    "Sulfur_stack": "Sulfur",
+    "gunpowder": "Gunpowder",
+    "explosives": "Explosives",
+    "cooked_sulfur": "Cooked Sulfur",
+    "pipes": "Pipes",
+    "AK47": "AK47",
+    "Metal_ore": "Metal Ore",
+    "Diesel": "Diesel",
+    "High_quality_metal": "High-Quality Metal",
+    "Crude_oil": "Crude Oil",
+    "Cloth": "Cloth",
+    "Scrap": "Scrap",
+    "HQM_ore": "HQM Ore",
+    "Rocket": "Rocket",
+    "c4": "C4",
+    "charcoal": "Charcoal",
+    "MLRS": "MLRS",
+    "MLRS_module": "MLRS Module",
+    "Metal_fragments": "Metal Fragments",
+    "Low_grade_fuel": "Low Grade Fuel",
 }
 
 # Maximum detection limits
@@ -80,11 +80,11 @@ MAX_QUANTITIES_PER_DETECTION = {
     "default": 4000,
 }
 
+
 def cap_detection_quantity(class_name: str, quantity: int) -> int:
     """Cap the quantity for a single detection."""
     max_limit = MAX_QUANTITIES_PER_DETECTION.get(
-        class_name,
-        MAX_QUANTITIES_PER_DETECTION["default"]
+        class_name, MAX_QUANTITIES_PER_DETECTION["default"]
     )
     if quantity > max_limit:
         logger.warning(
@@ -93,9 +93,11 @@ def cap_detection_quantity(class_name: str, quantity: int) -> int:
         )
     return min(quantity, max_limit)
 
+
 def get_user_file(user_id: int) -> Path:
     """Returns the Path to the JSON file storing this user's data."""
     return INVENTORY_DATA_DIR / f"user_{user_id}.json"
+
 
 def load_user_data(user_id: int) -> Dict:
     """
@@ -114,6 +116,7 @@ def load_user_data(user_id: int) -> Dict:
     else:
         return {"inventory": {}, "last_image": {}}
 
+
 def save_user_data(user_id: int, data: Dict) -> None:
     """
     Saves the user's inventory data to a JSON file.
@@ -125,7 +128,10 @@ def save_user_data(user_id: int, data: Dict) -> None:
     except Exception as e:
         logger.error(f"Failed to save user data for user {user_id}: {e}")
 
-def add_new_detections_to_inventory(user_id: int, new_detections: Dict[str, int]) -> None:
+
+def add_new_detections_to_inventory(
+    user_id: int, new_detections: Dict[str, int]
+) -> None:
     """
     Loads the user's data from disk, applies the new detections to their total inventory,
     updates 'last_image' with these detections, and saves the result.
@@ -141,6 +147,7 @@ def add_new_detections_to_inventory(user_id: int, new_detections: Dict[str, int]
 
     save_user_data(user_id, data)
 
+
 class ImageProcessor:
     """High-accuracy image processing with PaddleOCR integration."""
 
@@ -148,7 +155,7 @@ class ImageProcessor:
         """Initialize YOLO model and PaddleOCR."""
         self.yolo_model = YOLO(YOLO_MODEL_PATH)
         self.yolo_model.to(GPU_DEVICE)
-        self.reader = PaddleOCR(use_angle_cls=True, lang='en')
+        self.reader = PaddleOCR(use_angle_cls=True, lang="en")
         logger.info(f"Initialized models on {GPU_DEVICE}")
 
     @staticmethod
@@ -178,7 +185,9 @@ class ImageProcessor:
         eq_img = clahe.apply(img_np)
 
         # Thresholding
-        _, thresh_img = cv2.threshold(eq_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, thresh_img = cv2.threshold(
+            eq_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
 
         # Add all variants for OCR attempts
         processed_images.append(Image.fromarray(eq_img))
@@ -231,7 +240,9 @@ class ImageProcessor:
                 continue  # Skip and try next
 
             # Pick the best number
-            if quantity is not None and (best_quantity is None or quantity > best_quantity):
+            if quantity is not None and (
+                best_quantity is None or quantity > best_quantity
+            ):
                 best_quantity = quantity
                 best_text = detected_text
 
@@ -272,14 +283,18 @@ class ImageProcessor:
 
                 # Retry OCR for HQM Ore with more aggressive approach
                 if class_name == "HQM_ore" and quantity == 0:
-                    logger.warning("Retrying OCR for HQM Ore with enhanced preprocessing...")
+                    logger.warning(
+                        "Retrying OCR for HQM Ore with enhanced preprocessing..."
+                    )
                     for preprocessed in self.adaptive_preprocessing(cropped):
                         quantity, text = self.perform_ocr(preprocessed)
                         if quantity:
                             break
 
                 if quantity is None:
-                    logger.warning("OCR failed for %s, defaulting quantity to 0 or 1.", class_name)
+                    logger.warning(
+                        "OCR failed for %s, defaulting quantity to 0 or 1.", class_name
+                    )
                     quantity = 1 if class_name == "AK47" else 0
 
                 # Cap quantity
@@ -290,12 +305,14 @@ class ImageProcessor:
 
         return inventory
 
+
 def clean_debug_folder():
     """Deletes all files inside the `debug_crops` folder before restart."""
     if DEBUG_DIR.exists():
         shutil.rmtree(DEBUG_DIR)
     DEBUG_DIR.mkdir(exist_ok=True)
     logger.info("Cleared debug_crops folder.")
+
 
 class CVBot(commands.Bot):
     """Discord bot with PaddleOCR and YOLO-based inventory detection."""
@@ -317,12 +334,16 @@ class CVBot(commands.Bot):
         Restarts the bot every hour by exiting the script.
         An external script (like run_bot.py) must detect closure and restart.
         """
-        logger.info("Hourly scheduled restart triggered. Cleaning debug folder, then exiting.")
+        logger.info(
+            "Hourly scheduled restart triggered. Cleaning debug folder, then exiting."
+        )
         clean_debug_folder()
         await self.close()
         sys.exit(0)  # Let an external process or script restart us
 
-    async def process_attachment(self, attachment: discord.Attachment, user_id: int) -> str:
+    async def process_attachment(
+        self, attachment: discord.Attachment, user_id: int
+    ) -> str:
         """
         Handle image attachments and process inventory detection.
 
@@ -348,7 +369,10 @@ class CVBot(commands.Bot):
             add_new_detections_to_inventory(user_id, new_detections)
 
             # Return only newly detected items
-            return "\n".join(f"{k}: {v}" for k, v in new_detections.items()) or "No items detected."
+            return (
+                "\n".join(f"{k}: {v}" for k, v in new_detections.items())
+                or "No items detected."
+            )
 
         except Exception as e:
             logger.error("Processing error: %s", e, exc_info=True)
@@ -362,6 +386,7 @@ class CVBot(commands.Bot):
                     except Exception as exc:
                         logger.warning("Cleanup error: %s", exc)
 
+
 # Bot setup
 intents = discord.Intents.default()
 intents.messages = True
@@ -369,10 +394,12 @@ intents.message_content = True
 
 bot = CVBot(command_prefix="!", intents=intents)
 
+
 @bot.event
 async def on_ready():
     """Run when the bot is online."""
     logger.info("Bot ready as %s", bot.user)
+
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -388,6 +415,7 @@ async def on_message(message: discord.Message):
 
     # Process other bot commands (e.g., !inventory, !append, etc.)
     await bot.process_commands(message)
+
 
 @bot.command()
 async def inventory(ctx: commands.Context):
@@ -405,6 +433,7 @@ async def inventory(ctx: commands.Context):
 
     results = "\n".join(f"{item}: {count}" for item, count in user_inv.items())
     await ctx.send(f"Your current inventory:\n{results}")
+
 
 @bot.command()
 async def append(ctx: commands.Context):
@@ -441,7 +470,9 @@ async def append(ctx: commands.Context):
         old_quantity = last_image[selected_item]
 
         # Ask for new quantity
-        await ctx.send(f"Enter the new quantity for {selected_item} (old = {old_quantity}):")
+        await ctx.send(
+            f"Enter the new quantity for {selected_item} (old = {old_quantity}):"
+        )
 
         def check_quantity(msg):
             return msg.author == ctx.author and msg.content.isdigit()
@@ -451,7 +482,9 @@ async def append(ctx: commands.Context):
 
         # Update total inventory by diff
         diff = new_quantity - old_quantity
-        data["inventory"][selected_item] = data["inventory"].get(selected_item, 0) + diff
+        data["inventory"][selected_item] = (
+            data["inventory"].get(selected_item, 0) + diff
+        )
 
         # Update last_image
         data["last_image"][selected_item] = new_quantity
@@ -466,12 +499,15 @@ async def append(ctx: commands.Context):
 
         save_user_data(user_id, data)
 
-        await ctx.send(f"Updated {selected_item} from {old_quantity} to {new_quantity}.")
+        await ctx.send(
+            f"Updated {selected_item} from {old_quantity} to {new_quantity}."
+        )
     except asyncio.TimeoutError:
         await ctx.send("Operation timed out.")
     except Exception as e:
         logger.error(f"Error in append command: {e}", exc_info=True)
         await ctx.send("Something went wrong. Please try again.")
+
 
 @bot.command()
 async def restart(ctx: commands.Context):
@@ -485,6 +521,7 @@ async def restart(ctx: commands.Context):
     await ctx.send("Restarting bot...")
     await bot.close()
     sys.exit(0)
+
 
 @bot.command()
 async def clearinv(ctx: commands.Context):
@@ -504,6 +541,7 @@ async def clearinv(ctx: commands.Context):
     except Exception as e:
         logger.error(f"Error clearing inventory: {e}")
         await ctx.send("An error occurred while clearing inventories.")
+
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
