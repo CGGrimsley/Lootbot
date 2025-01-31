@@ -38,6 +38,6 @@ This Discord bot uses [YOLO](https://github.com/ultralytics/ultralytics) for obj
   Contributions are welcome! Please feel free to reach out me on discord @kdrgold or via github!
 
 ### License
-  GPLv3 - https://www.gnu.org/licenses/gpl-3.0.en.html
+  [GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
 
