@@ -43,7 +43,7 @@ INVENTORY_DATA_DIR = Path("inventory_data")
 INVENTORY_DATA_DIR.mkdir(exist_ok=True)
 
 # Admin username for commands
-ADMIN_USERNAME = "kdrgold"
+ADMIN_USERNAME = "admin_user_name"
 
 # Item classification config
 ITEM_CATEGORIES = {
