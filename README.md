@@ -11,6 +11,7 @@ This Discord bot uses [YOLO](https://github.com/ultralytics/ultralytics) for obj
   - `!inventory` – Display the total inventory of the user.
   - `!append` – Correct the last detected item count if OCR made a mistake.
   - `!clearinv` – Admin-only command to wipe all inventory data.
+  - `!restart` - Admin-only command to force restart of the bot.
 
 ### Requirements
 - **Python**: 3.10
