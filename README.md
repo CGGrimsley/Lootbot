@@ -10,7 +10,7 @@ This Discord bot uses [YOLO](https://github.com/ultralytics/ultralytics) for obj
 - **Commands**:
   - `!inventory` – Display the total inventory of the user.
   - `!append` – Correct the last detected item count if OCR made a mistake.
-  - `!clearinv` – Admin-only command to wipe inventory data for the current wipe (for a specific user, all users or yourself.
+  - `!clearinv` – Admin-only command to wipe inventory data for the current wipe (for a specific user, all users or yourself).
   ```
   !clearinv @user
   !clearinv all
