@@ -10,8 +10,14 @@ This Discord bot uses [YOLO](https://github.com/ultralytics/ultralytics) for obj
 - **Commands**:
   - `!inventory` – Display the total inventory of the user.
   - `!append` – Correct the last detected item count if OCR made a mistake.
-  - `!clearinv` – Admin-only command to wipe all inventory data.
+  - `!clearinv` – Admin-only command to wipe inventory data for the current wipe (for a specific user, all users or yourself).
+  ```
+  !clearinv @user
+  !clearinv all
+  !clearinv
+  ```
   - `!restart` - Admin-only command to force restart of the bot.
+  - `!wipe` - Admin-only command to configure dates for the current wipe (YYYY-MM-DD)
 
 ### Requirements
 - **Python**: 3.10
@@ -32,7 +38,12 @@ This Discord bot uses [YOLO](https://github.com/ultralytics/ultralytics) for obj
    DISCORD_TOKEN=YourDiscordBotTokenHere
    ```
 
-5. Ensure your discord has a proper channel for the bot titled the following:
+4. Replace the default Admin Username in bot.py with your username:
+   ```
+   ADMIN_USERNAME = "admin_user_name"
+   ```
+
+6. Ensure your discord has a proper channel for the bot titled the following:
    ```loot-brags```
 
 ### Contributions
