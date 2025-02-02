@@ -905,6 +905,61 @@ async def total(ctx, year: str = None):
     await ctx.send(embed=embed)
 
 
+@bot.command()
+async def leaderboard(ctx):
+    """
+    Displays the top 5 users (by weighted points) from the current wipe’s farm inventories.
+
+    Weights:
+      - Sulfur: 2 points
+      - Metal Fragments: 1 point
+      - HQM Ore: 300 points
+    """
+    current_wipe = load_current_wipe()
+    if not current_wipe:
+        return await ctx.send("Current wipe not set.")
+
+    wipe_id = current_wipe["id"]
+    user_points = {}
+    # Define the weights for items.
+    POINTS = {"Sulfur": 2, "Metal Fragments": 1, "HQM Ore": 300}
+    # Folder for farm inventories.
+    farm_folder = WIPE_DATA_DIR / wipe_id / "farm"
+
+    if not farm_folder.exists():
+        return await ctx.send("No farm inventories found.")
+
+    # Loop through each user file and compute the weighted score.
+    for file in farm_folder.glob("user_*.json"):
+        try:
+            with file.open("r") as f:
+                data = json.load(f)
+            inv = data.get("inventory", {})
+            total_points = 0
+            for item, qty in inv.items():
+                weight = POINTS.get(item, 0)
+                total_points += weight * qty
+            # Extract user id from the filename format "user_<id>.json"
+            user_id = int(file.stem.split("_")[1])
+            user_points[user_id] = total_points
+        except Exception as e:
+            logger.error(f"Error processing leaderboard for {file}: {e}")
+
+    if not user_points:
+        return await ctx.send("No farm inventories found.")
+
+    # Sort users by points in descending order and take top 5.
+    sorted_users = sorted(user_points.items(), key=lambda x: x[1], reverse=True)[:5]
+
+    embed = discord.Embed(title="Farm Leaderboard", color=0xFFD700)
+    for rank, (user_id, points) in enumerate(sorted_users, start=1):
+        member = ctx.guild.get_member(user_id)
+        name = member.display_name if member else str(user_id)
+        embed.add_field(name=f"{rank}. {name}", value=f"{points} points", inline=False)
+
+    await ctx.send(embed=embed)
+
+
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
     if not TOKEN:
