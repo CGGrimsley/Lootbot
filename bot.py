@@ -808,6 +808,103 @@ async def wipe_error(ctx, error):
         raise error
 
 
+@bot.command()
+async def farm(ctx):
+    """
+    Processes attachments as farm inventory.
+    Usage: !farm (with an image attachment)
+
+    The detections are stored in the current wipe’s "farm" inventory.
+    """
+    # Ensure a current wipe is set.
+    current_wipe = load_current_wipe()
+    if not current_wipe:
+        return await ctx.send("Current wipe not set. Contact admin.")
+
+    # Ensure the message contains an attachment.
+    if not ctx.message.attachments:
+        return await ctx.send("No attachment found.")
+
+    results = []
+    for attachment in ctx.message.attachments:
+        try:
+            # Process the image attachment (similar to process_attachment)
+            TEMP_DIR.mkdir(exist_ok=True)
+            file_path = TEMP_DIR / attachment.filename
+
+            await attachment.save(file_path, use_cached=True)
+            async with aiofiles.open(file_path, "rb") as f:
+                content = await f.read()
+
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+                temp_file.write(content)
+                temp_path = Path(temp_file.name)
+
+            # Detect items from the image.
+            new_detections = bot.image_processor.process_image(temp_path)
+
+            # Update the user's inventory in the "farm" subfolder.
+            add_new_detections_to_inventory(
+                ctx.author.id, new_detections, current_wipe["id"], "farm"
+            )
+
+            # Prepare the result summary.
+            results.append(
+                "\n".join(f"{k}: {v}" for k, v in new_detections.items())
+                or "No items detected."
+            )
+
+        except Exception as e:
+            logger.error("Processing error (farm): %s", e, exc_info=True)
+            results.append(f"Error processing image: {str(e)}")
+        finally:
+            # Cleanup temporary files.
+            for path in [file_path, temp_path]:
+                if path.exists():
+                    try:
+                        path.unlink(missing_ok=True)
+                    except Exception as exc:
+                        logger.warning("Cleanup error: %s", exc)
+
+    # Send the results in an embed.
+    embed = discord.Embed(
+        title="Farm Inventory Update", description="\n".join(results), color=0x00FF00
+    )
+    await ctx.send(embed=embed)
+
+
+@bot.command()
+async def total(ctx, year: str = None):
+    """
+    Displays the combined regular inventory totals.
+
+    Without an argument: totals for the current wipe.
+    With a year (YYYY) argument: totals aggregated from all wipes in that year.
+    """
+    if year is None:
+        # Get current wipe info.
+        current_wipe = load_current_wipe()
+        if not current_wipe:
+            return await ctx.send("Current wipe not set.")
+        wipe_id = current_wipe["id"]
+        total_inv = aggregate_inventory(wipe_id, "regular")
+        title = f"Total Inventory for Wipe {wipe_id}"
+    else:
+        # Aggregate totals for all wipes in the given year.
+        total_inv = aggregate_yearly_inventory(year, "regular")
+        title = f"Total Inventory for Year {year}"
+
+    if not total_inv:
+        return await ctx.send("No inventory data found.")
+
+    # Build the embed message.
+    embed = discord.Embed(title=title, color=0x00FF00)
+    for item, qty in total_inv.items():
+        embed.add_field(name=item, value=str(qty), inline=True)
+
+    await ctx.send(embed=embed)
+
+
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
     if not TOKEN:
