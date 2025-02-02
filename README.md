@@ -18,6 +18,9 @@ This Discord bot uses [YOLO](https://github.com/ultralytics/ultralytics) for obj
   ```
   - `!restart` - Admin-only command to force restart of the bot.
   - `!wipe` - Admin-only command to configure dates for the current wipe (YYYY-MM-DD)
+  - `!total` - Display the users current total for the current wipe, or can show yearly totals using `!total YYYY`.
+  - `!farm` - Used alongside an attachment to count detections towards the leaderboard.
+  - `!leaderboard` - Generates a leaderboard of the top 5 contributors for the current wipe using a weighted point system.
 
 ### Requirements
 - **Python**: 3.10
