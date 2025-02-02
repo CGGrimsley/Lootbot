@@ -1,27 +1,27 @@
 """Discord bot for inventory detection using YOLO and PaddleOCR."""
 
+import asyncio
+import datetime
+import json
 import logging
 import os
 import re
 import shutil
 import sys
-import asyncio
+import tempfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-import aiofiles
-import tempfile
-import numpy as np
-import cv2
-import json
-import datetime
 
+import aiofiles
+import cv2
 import discord
+import numpy as np
 import torch
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
+from paddleocr import PaddleOCR
 from PIL import Image, ImageEnhance, ImageOps
 from ultralytics import YOLO
-from paddleocr import PaddleOCR
 
 # Configure logging
 logging.basicConfig(
@@ -50,6 +50,7 @@ CURRENT_WIPE_FILE = INVENTORY_DATA_DIR / "current_wipe.json"
 WIPE_DATA_DIR = INVENTORY_DATA_DIR / "wipes"
 WIPE_DATA_DIR.mkdir(exist_ok=True)
 
+
 # ---------------------------
 # Current Wipe Info Helpers
 # ---------------------------
@@ -62,35 +63,37 @@ def load_current_wipe() -> Optional[Dict]:
             logger.error(f"Error loading current wipe: {e}")
     return None
 
+
 def save_current_wipe(wipe_info: Dict) -> None:
     with CURRENT_WIPE_FILE.open("w") as f:
         json.dump(wipe_info, f, indent=2)
+
 
 # Admin username for commands
 ADMIN_USERNAME = "admin_user_name"
 
 # Item classification config
 ITEM_CATEGORIES = {
-    'Sulfur_stack': 'Sulfur',
-    'gunpowder': 'Gunpowder',
-    'explosives': 'Explosives',
-    'cooked_sulfur': 'Cooked Sulfur',
-    'pipes': 'Pipes',
-    'AK47': 'AK47',
-    'Metal_ore': 'Metal Ore',
-    'Diesel': 'Diesel',
-    'High_quality_metal': 'High-Quality Metal',
-    'Crude_oil': 'Crude Oil',
-    'Cloth': 'Cloth',
-    'Scrap': 'Scrap',
-    'HQM_ore': 'HQM Ore',
-    'Rocket': 'Rocket',
-    'c4': 'C4',
-    'charcoal': 'Charcoal',
-    'MLRS': 'MLRS',
-    'MLRS_module': 'MLRS Module',
-    'Metal_fragments': 'Metal Fragments',
-    'Low_grade_fuel': 'Low Grade Fuel'
+    "Sulfur_stack": "Sulfur",
+    "gunpowder": "Gunpowder",
+    "explosives": "Explosives",
+    "cooked_sulfur": "Cooked Sulfur",
+    "pipes": "Pipes",
+    "AK47": "AK47",
+    "Metal_ore": "Metal Ore",
+    "Diesel": "Diesel",
+    "High_quality_metal": "High-Quality Metal",
+    "Crude_oil": "Crude Oil",
+    "Cloth": "Cloth",
+    "Scrap": "Scrap",
+    "HQM_ore": "HQM Ore",
+    "Rocket": "Rocket",
+    "c4": "C4",
+    "charcoal": "Charcoal",
+    "MLRS": "MLRS",
+    "MLRS_module": "MLRS Module",
+    "Metal_fragments": "Metal Fragments",
+    "Low_grade_fuel": "Low Grade Fuel",
 }
 
 # Maximum detection limits
@@ -104,11 +107,11 @@ MAX_QUANTITIES_PER_DETECTION = {
     "default": 4000,
 }
 
+
 def cap_detection_quantity(class_name: str, quantity: int) -> int:
     """Cap the quantity for a single detection."""
     max_limit = MAX_QUANTITIES_PER_DETECTION.get(
-        class_name,
-        MAX_QUANTITIES_PER_DETECTION["default"]
+        class_name, MAX_QUANTITIES_PER_DETECTION["default"]
     )
     if quantity > max_limit:
         logger.warning(
@@ -117,9 +120,11 @@ def cap_detection_quantity(class_name: str, quantity: int) -> int:
         )
     return min(quantity, max_limit)
 
+
 def get_user_file(user_id: int) -> Path:
     """Returns the Path to the JSON file storing this user's data."""
     return INVENTORY_DATA_DIR / f"user_{user_id}.json"
+
 
 def load_user_data(user_id: int) -> Dict:
     """
@@ -138,6 +143,7 @@ def load_user_data(user_id: int) -> Dict:
     else:
         return {"inventory": {}, "last_image": {}}
 
+
 def save_user_data(user_id: int, data: Dict) -> None:
     """
     Saves the user's inventory data to a JSON file.
@@ -149,7 +155,13 @@ def save_user_data(user_id: int, data: Dict) -> None:
     except Exception as e:
         logger.error(f"Failed to save user data for user {user_id}: {e}")
 
-def add_new_detections_to_inventory(user_id: int, new_detections: Dict[str, int], wipe_id: str, inv_type: str = "regular") -> None:
+
+def add_new_detections_to_inventory(
+    user_id: int,
+    new_detections: Dict[str, int],
+    wipe_id: str,
+    inv_type: str = "regular",
+) -> None:
     """
     Loads the user's data from disk (for a specific wipe and inventory type),
     applies the new detections to their total inventory, updates 'last_image' with these detections,
@@ -169,7 +181,7 @@ def add_new_detections_to_inventory(user_id: int, new_detections: Dict[str, int]
     update_record = {
         "timestamp": datetime.datetime.now().timestamp(),
         "items": new_detections,
-        "type": inv_type
+        "type": inv_type,
     }
     data.setdefault("updates", []).append(update_record)
 
@@ -185,6 +197,7 @@ def get_user_file(user_id: int, wipe_id: str, inv_type: str = "regular") -> Path
     base.mkdir(parents=True, exist_ok=True)
     return base / f"user_{user_id}.json"
 
+
 def load_user_data(user_id: int, wipe_id: str, inv_type: str = "regular") -> Dict:
     """
     Loads the user's inventory data from the wipe-specific JSON file.
@@ -195,10 +208,15 @@ def load_user_data(user_id: int, wipe_id: str, inv_type: str = "regular") -> Dic
             with file_path.open("r") as f:
                 return json.load(f)
         except Exception as e:
-            logger.warning(f"Failed to parse JSON for user {user_id} in wipe {wipe_id}: {e}")
+            logger.warning(
+                f"Failed to parse JSON for user {user_id} in wipe {wipe_id}: {e}"
+            )
     return {"inventory": {}, "last_image": {}, "updates": []}
 
-def save_user_data(user_id: int, wipe_id: str, data: Dict, inv_type: str = "regular") -> None:
+
+def save_user_data(
+    user_id: int, wipe_id: str, data: Dict, inv_type: str = "regular"
+) -> None:
     """
     Saves the user's inventory data for a given wipe and inventory type.
     """
@@ -207,7 +225,10 @@ def save_user_data(user_id: int, wipe_id: str, data: Dict, inv_type: str = "regu
         with file_path.open("w") as f:
             json.dump(data, f, indent=2)
     except Exception as e:
-        logger.error(f"Failed to save user data for user {user_id} in wipe {wipe_id}: {e}")
+        logger.error(
+            f"Failed to save user data for user {user_id} in wipe {wipe_id}: {e}"
+        )
+
 
 def aggregate_inventory(wipe_id: str, inv_type: str = "regular") -> Dict[str, int]:
     """
@@ -226,6 +247,7 @@ def aggregate_inventory(wipe_id: str, inv_type: str = "regular") -> Dict[str, in
             except Exception as e:
                 logger.error(f"Error aggregating file {file}: {e}")
     return total
+
 
 def aggregate_yearly_inventory(year: str, inv_type: str = "regular") -> Dict[str, int]:
     """
@@ -248,7 +270,7 @@ class ImageProcessor:
         """Initialize YOLO model and PaddleOCR."""
         self.yolo_model = YOLO(YOLO_MODEL_PATH)
         self.yolo_model.to(GPU_DEVICE)
-        self.reader = PaddleOCR(use_angle_cls=True, lang='en')
+        self.reader = PaddleOCR(use_angle_cls=True, lang="en")
         logger.info(f"Initialized models on {GPU_DEVICE}")
 
     @staticmethod
@@ -278,7 +300,9 @@ class ImageProcessor:
         eq_img = clahe.apply(img_np)
 
         # Thresholding
-        _, thresh_img = cv2.threshold(eq_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, thresh_img = cv2.threshold(
+            eq_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
 
         # Add all variants for OCR attempts
         processed_images.append(Image.fromarray(eq_img))
@@ -331,7 +355,9 @@ class ImageProcessor:
                 continue  # Skip and try next
 
             # Pick the best number
-            if quantity is not None and (best_quantity is None or quantity > best_quantity):
+            if quantity is not None and (
+                best_quantity is None or quantity > best_quantity
+            ):
                 best_quantity = quantity
                 best_text = detected_text
 
@@ -372,14 +398,18 @@ class ImageProcessor:
 
                 # Retry OCR for HQM Ore with more aggressive approach
                 if class_name == "HQM_ore" and quantity == 0:
-                    logger.warning("Retrying OCR for HQM Ore with enhanced preprocessing...")
+                    logger.warning(
+                        "Retrying OCR for HQM Ore with enhanced preprocessing..."
+                    )
                     for preprocessed in self.adaptive_preprocessing(cropped):
                         quantity, text = self.perform_ocr(preprocessed)
                         if quantity:
                             break
 
                 if quantity is None:
-                    logger.warning("OCR failed for %s, defaulting quantity to 0 or 1.", class_name)
+                    logger.warning(
+                        "OCR failed for %s, defaulting quantity to 0 or 1.", class_name
+                    )
                     quantity = 1 if class_name == "AK47" else 0
 
                 # Cap quantity
@@ -390,12 +420,14 @@ class ImageProcessor:
 
         return inventory
 
+
 def clean_debug_folder():
     """Deletes all files inside the `debug_crops` folder before restart."""
     if DEBUG_DIR.exists():
         shutil.rmtree(DEBUG_DIR)
     DEBUG_DIR.mkdir(exist_ok=True)
     logger.info("Cleared debug_crops folder.")
+
 
 class CVBot(commands.Bot):
     """Discord bot with PaddleOCR and YOLO-based inventory detection."""
@@ -417,12 +449,16 @@ class CVBot(commands.Bot):
         Restarts the bot every hour by exiting the script.
         An external script (like run_bot.py) must detect closure and restart.
         """
-        logger.info("Hourly scheduled restart triggered. Cleaning debug folder, then exiting.")
+        logger.info(
+            "Hourly scheduled restart triggered. Cleaning debug folder, then exiting."
+        )
         clean_debug_folder()
         await self.close()
         sys.exit(0)  # Let an external process or script restart us
 
-    async def process_attachment(self, attachment: discord.Attachment, user_id: int) -> str:
+    async def process_attachment(
+        self, attachment: discord.Attachment, user_id: int
+    ) -> str:
         """
         Handle image attachments and process inventory detection.
         Returns:
@@ -449,10 +485,15 @@ class CVBot(commands.Bot):
                 return "Current wipe not set."
 
             # Update the user's inventory using the wipe-specific helper.
-            add_new_detections_to_inventory(user_id, new_detections, current_wipe["id"], "regular")
+            add_new_detections_to_inventory(
+                user_id, new_detections, current_wipe["id"], "regular"
+            )
 
             # Return only newly detected items.
-            return "\n".join(f"{k}: {v}" for k, v in new_detections.items()) or "No items detected."
+            return (
+                "\n".join(f"{k}: {v}" for k, v in new_detections.items())
+                or "No items detected."
+            )
 
         except Exception as e:
             logger.error("Processing error: %s", e, exc_info=True)
@@ -466,6 +507,7 @@ class CVBot(commands.Bot):
                     except Exception as exc:
                         logger.warning("Cleanup error: %s", exc)
 
+
 # Bot setup
 intents = discord.Intents.default()
 intents.messages = True
@@ -473,10 +515,12 @@ intents.message_content = True
 
 bot = CVBot(command_prefix="!", intents=intents)
 
+
 @bot.event
 async def on_ready():
     """Run when the bot is online."""
     logger.info("Bot ready as %s", bot.user)
+
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -492,6 +536,7 @@ async def on_message(message: discord.Message):
 
     # Process other bot commands (e.g., !inventory, !append, etc.)
     await bot.process_commands(message)
+
 
 @bot.command()
 async def inventory(ctx: commands.Context):
@@ -556,7 +601,9 @@ async def append(ctx: commands.Context):
         old_quantity = last_image[selected_item]
 
         # Ask for new quantity
-        await ctx.send(f"Enter the new quantity for {selected_item} (old = {old_quantity}):")
+        await ctx.send(
+            f"Enter the new quantity for {selected_item} (old = {old_quantity}):"
+        )
 
         def check_quantity(msg):
             return msg.author == ctx.author and msg.content.isdigit()
@@ -566,7 +613,9 @@ async def append(ctx: commands.Context):
 
         # Update total inventory by diff
         diff = new_quantity - old_quantity
-        data["inventory"][selected_item] = data["inventory"].get(selected_item, 0) + diff
+        data["inventory"][selected_item] = (
+            data["inventory"].get(selected_item, 0) + diff
+        )
 
         # Update last_image
         data["last_image"][selected_item] = new_quantity
@@ -581,12 +630,15 @@ async def append(ctx: commands.Context):
 
         save_user_data(user_id, data)
 
-        await ctx.send(f"Updated {selected_item} from {old_quantity} to {new_quantity}.")
+        await ctx.send(
+            f"Updated {selected_item} from {old_quantity} to {new_quantity}."
+        )
     except asyncio.TimeoutError:
         await ctx.send("Operation timed out.")
     except Exception as e:
         logger.error(f"Error in append command: {e}", exc_info=True)
         await ctx.send("Something went wrong. Please try again.")
+
 
 @bot.command()
 async def restart(ctx: commands.Context):
@@ -601,11 +653,12 @@ async def restart(ctx: commands.Context):
     await bot.close()
     sys.exit(0)
 
+
 @bot.command()
 async def clearinv(ctx, target: str = None):
     """
     Clears inventory data for the current wipe.
-    
+
     Usage:
       - !clearinv
           Clears your own inventory for the current wipe.
@@ -613,18 +666,20 @@ async def clearinv(ctx, target: str = None):
           (Admin only) Clears inventory for all users in the current wipe.
       - !clearinv @user or !clearinv username
           (Admin only) Clears inventory for a specific user in the current wipe.
-    
+
     This command only deletes inventory files within the current wipe folder.
     """
     # If a target is provided other than your own inventory, require admin permission.
     if target is not None and ctx.author.name != ADMIN_USERNAME:
-        return await ctx.send("You do not have permission to clear inventories for others.")
-    
+        return await ctx.send(
+            "You do not have permission to clear inventories for others."
+        )
+
     # Load the current wipe info.
     current_wipe = load_current_wipe()
     if not current_wipe:
         return await ctx.send("Current wipe not set.")
-    
+
     wipe_id = current_wipe["id"]
     # Get the folder for the current wipe's regular inventories.
     inv_folder = WIPE_DATA_DIR / wipe_id / "regular"
@@ -635,13 +690,15 @@ async def clearinv(ctx, target: str = None):
         if user_file.exists():
             try:
                 user_file.unlink(missing_ok=True)
-                await ctx.send(f"Your inventory has been cleared for the current wipe ({wipe_id}).")
+                await ctx.send(
+                    f"Your inventory has been cleared for the current wipe ({wipe_id})."
+                )
             except Exception as e:
                 logger.error(f"Error deleting file {user_file}: {e}")
                 await ctx.send("An error occurred while clearing your inventory.")
         else:
             await ctx.send("You have no inventory data for the current wipe.")
-    
+
     # Case 2: Target is "all" -> clear all inventories for the current wipe.
     elif target.lower() == "all":
         count = 0
@@ -652,8 +709,10 @@ async def clearinv(ctx, target: str = None):
                 count += 1
             except Exception as e:
                 logger.error(f"Error deleting file {file}: {e}")
-        await ctx.send(f"Cleared inventory data for {count} user(s) in the current wipe ({wipe_id}).")
-    
+        await ctx.send(
+            f"Cleared inventory data for {count} user(s) in the current wipe ({wipe_id})."
+        )
+
     # Case 3: Target is a specific user (mention or username).
     else:
         # First, try to get the member from mentions.
@@ -662,21 +721,28 @@ async def clearinv(ctx, target: str = None):
             member = ctx.message.mentions[0]
         else:
             # Try to search by username (case-insensitive).
-            member = discord.utils.find(lambda m: m.name.lower() == target.lower(), ctx.guild.members)
-        
+            member = discord.utils.find(
+                lambda m: m.name.lower() == target.lower(), ctx.guild.members
+            )
+
         if not member:
             return await ctx.send("User not found.")
-        
+
         user_file = get_user_file(member.id, wipe_id, "regular")
         if user_file.exists():
             try:
                 user_file.unlink(missing_ok=True)
-                await ctx.send(f"Cleared inventory data for {member.display_name} in the current wipe ({wipe_id}).")
+                await ctx.send(
+                    f"Cleared inventory data for {member.display_name} in the current wipe ({wipe_id})."
+                )
             except Exception as e:
                 logger.error(f"Error deleting file {user_file}: {e}")
-                await ctx.send("An error occurred while clearing that user's inventory.")
+                await ctx.send(
+                    "An error occurred while clearing that user's inventory."
+                )
         else:
             await ctx.send("No inventory data found for that user in the current wipe.")
+
 
 @bot.command()
 async def wipe(ctx, start_date: str, end_date: str):
@@ -702,7 +768,7 @@ async def wipe(ctx, start_date: str, end_date: str):
         "id": wipe_id,
         "start": start_date,
         "end": end_date,
-        "year": start_date.split("-")[0]
+        "year": start_date.split("-")[0],
     }
 
     # Save the current wipe information.
@@ -716,9 +782,10 @@ async def wipe(ctx, start_date: str, end_date: str):
     embed = discord.Embed(
         title="Wipe Set",
         description=f"Current wipe set to {start_date} to {end_date}",
-        color=0x00ff00
+        color=0x00FF00,
     )
     await ctx.send(embed=embed)
+
 
 # ---------------------------
 # Error Handler for the !wipe Command
@@ -733,12 +800,13 @@ async def wipe_error(ctx, error):
         embed = discord.Embed(
             title="Error: Missing Argument",
             description="Missing required arguments.\nUsage: `!wipe YYYY-MM-DD YYYY-MM-DD`",
-            color=0xFF0000
+            color=0xFF0000,
         )
         await ctx.send(embed=embed)
     else:
         # Re-raise other errors so they can be handled by the global error handler or show a traceback.
         raise error
+
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
